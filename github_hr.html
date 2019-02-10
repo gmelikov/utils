@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Github HR</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/css/bootstrap.min.css" integrity="sha384-GJzZqFGwb1QTTN6wy59ffF1BuGJpLSa9DkKMp0DgiMDm4iYMj70gZWKYbI706tWS" crossorigin="anonymous">
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.6/umd/popper.min.js" integrity="sha384-wHAiFfRlMFy6i5SRaxvfOCifBUQy1xHdJ/yoi7FRNXMRBu5WHdZYu1hA6ZOblgut" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/js/bootstrap.min.js" integrity="sha384-B0UglyR+jN6CkvvICOB2joaf5I4l3gm9GU6Hc1og6Ls7i6U/mkkaduKaBhlAXv9k" crossorigin="anonymous"></script>
+
+<style>
+#user table img {
+width: 64px;
+}
+</style>
+
+</head>
+<body class="jumbotron text-left">
+    <h1>Search github users by contributions</h1>
+    <div><a href="https://help.github.com/articles/searching-users/#search-by-location">Search users manual</a>. If you need to search without contribution info - use <a href="https://github.com/search?q=location%3Amoscow+followers%3A%3E5+language%3Apython">github search.</a></div>
+    <div class="form">
+    <input type="text" style="width: 50%" id="usersearch" placeholder="language:python location:russia followers:>2 type:user" value="language:python location:russia followers:>2 type:user"/><label for="usersearch">User search string (will get only first 1000 users)</label></br>
+    <input type="text" style="width: 50%" id="reposearch" placeholder="openstack/nova" value="openstack/nova"/><label for="reposearch">Repository (will get only first 500 users)</label></br>
+    <button type="button" class="btn btn-primary findnow">Find!</button>
+    <b style="color:red;"><span id="error"></span></b>
+    </div>
+    <div>Users found (but we will get only first 1000): <b><span id="pepfound"></span></b>. Try to rewrite search query to get less than 1000 results.</div>
+    <div id="user"><table class="table"></table></div>
+    <div class="spinner-border loader" style="display:none;" role="status">
+      <span class="sr-only">Loading...</span>
+    </div>
+    <script
+              src="https://code.jquery.com/jquery-2.2.4.min.js"
+              integrity="sha256-BbhdlvQf/xTY9gja0Dq3HiwQF8LaCRTXxZKRutelT44="
+              crossorigin="anonymous"></script>
+
+<script>
+
+$( ".findnow" ).click(function() {
+    find();
+});
+
+$('.form').on('keypress',function(e) {
+    if(e.which == 13) {
+        find();
+    }
+});
+
+oldreq = '';
+
+
+function find() {
+    $('.loader').show();
+    $('#error').html('');
+    userInfos = $("#user table");
+    userInfos.html('');
+    last = 0;
+    max_pages = 10;
+    users = {};
+    for (var i = 1; i <= max_pages; i++) {
+
+        if ($('#usersearch').val() == oldreq && $('#error').html() == "") {
+            //we already have everything
+            break;
+        }
+        
+        jQuery.ajax({
+            url: "https://api.github.com/search/users?q="+encodeURI($('#usersearch').val())+"&per_page=100&page="+i,
+            success: function(html) {
+                //console.log(html);
+                $('#pepfound').html(html.total_count);
+                $.each( html.items, function( key, value ) {
+                    users[value.login] = value;
+                });
+                if (html.items.length<100) {
+                    last=1;
+                }
+            },
+            error: function(html) {
+                $('#error').html('WAIT 1-2 MINUTES, TOO MANY REQUESTS!');
+                last=1;
+            },
+            async:false
+        });
+        if (last == 1) {
+            break;
+        }
+    }
+
+    oldreq = $('#usersearch').val();
+
+    last = 0;
+    max_pages = 5;
+    contribs = {};
+    for (var i = 1; i <= max_pages; i++) {
+        jQuery.ajax({
+            url: "https://api.github.com/repos/"+$('#reposearch').val()+"/contributors?per_page=100&page="+i,
+            success: function(html) {
+                //console.log(html);
+                $.each( html, function( key, value ) {
+                    contribs[value.login] = value;
+                });
+                if (html.length<100) {
+                    last=1;
+                }
+            },
+            error: function(html) {
+                $('#error').html('WAIT 1-2 MINUTES, TOO MANY REQUESTS!');
+                last=1;
+            },
+            async:false
+        });
+        if (last == 1) {
+            break;
+        }
+    }
+    //console.log(contribs);
+
+    print_header(users[Object.keys(users)[0]]);
+
+    $.each( users, function( key, value ) {
+        if( key in contribs ) {
+            print_user(value);
+        }
+    });
+    $('.loader').hide();
+}
+
+user_fields = ['login', 'score', 'avatar'];
+contrib_fields = ['contributions'];
+
+function print_header(d) {
+    line = $('<tr>');
+    userInfos.append(line)
+    /*
+        $.each( d, function (prop, val) {
+          line.append('<th>'+prop+'</th>');
+        });
+    */
+    $.each( user_fields, function (prop, val) {
+      line.append('<th>'+val+'</th>');
+    });
+    $.each( contrib_fields, function (prop, val) {
+      line.append('<th>'+val+'</th>');
+    });
+}
+
+
+
+function print_user(user) {
+    line = $('<tr>');
+    userInfos.append(line)
+    $.each( user, function (prop, val) {
+        if (user_fields.includes(prop)) {
+            line.append('<td><a target="_blank" href="https://github.com/'+user.login+'">'+val+'</a></td>');
+        }
+    });
+    line.append('<td><img src="'+contribs[user.login].avatar_url+'"/></td>');
+    line.append('<td>'+contribs[user.login].contributions+'</td>');
+}
+
+</script>
+</body>
+
+</html>
